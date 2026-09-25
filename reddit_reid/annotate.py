@@ -139,15 +139,21 @@ def annotate(cfg, resume=True):
             cache_key = digest([bundle["content_hash"], settings["name"], settings["prompt_version"], schema_hash, PROMPT])
             output = root / "annotations" / (bundle["incident_id"] + ".json")
             existing = load_json(output)
+            chatgpt = load_json(root / 'chatgpt_reviews' / (bundle['incident_id'] + '.json'), {})
+            if chatgpt.get('annotation_provenance', {}).get('case_content_hash') == bundle['content_hash']:
+                reviewed = validate_spans(Annotation.model_validate(chatgpt), bundle['records'])
+                save_json(output, reviewed.model_dump(), durable=False)
+                results.append(reviewed.model_dump())
+                continue
             override = overrides.get(bundle['incident_id'])
             if override and override.get('annotation_provenance', {}).get('case_content_hash') == bundle['content_hash']:
                 reviewed = validate_spans(Annotation.model_validate(override), bundle['records'])
-                save_json(output, reviewed.model_dump())
+                save_json(output, reviewed.model_dump(), durable=False)
                 results.append(reviewed.model_dump())
                 continue
             if resume and existing and existing.get("annotation_provenance", {}).get("cache_key") == cache_key and existing.get("review_status") == "model_reviewed_needs_human_review":
                 results.append(existing); continue
-            annotation = pending_annotation(bundle)
+            annotation = pending_annotation(bundle, 'awaiting_chatgpt_full_text_review' if (root/'inputs/chatgpt_qualification.json').exists() else 'model_not_configured')
             if configured:
                 try:
                     batches = build_batches(bundle, settings["max_batch_characters"])
@@ -179,7 +185,7 @@ def annotate(cfg, resume=True):
                 except Exception as exc:
                     annotation = pending_annotation(bundle, type(exc).__name__ + ": " + str(exc))
                     save_json(root / "logs" / (bundle["incident_id"] + ".annotation_error.json"), {"error": str(exc), "cache_key": cache_key})
-            save_json(output, annotation.model_dump())
+            save_json(output, annotation.model_dump(), durable=False)
             results.append(annotation.model_dump())
         store.bulk("annotations", [{"incident_id": r["incident_id"], "json": json.dumps(r, ensure_ascii=False)} for r in results])
     finally:

@@ -1,0 +1,11 @@
+The continuation scans only archive files without a compatible whole-file completion checkpoint. It uses the same pinned Dk587/arctic revision and all 7,886 normalized workbook queries. Its time budget is unlimited. Network, memory, storage and individual request safeguards still apply.
+
+`config.remaining.yaml` controls this run. `data_remaining` holds its independent database, checkpoints and full saved records. `remaining_scan/code` is a frozen copy of the scanner taken when the continuation was prepared, with explicit unlimited-time handling, baseline candidate exclusion and a separate export destination. The original review task can continue working on `data` independently.
+
+The baseline contains 1,214 verified completed discovery files, leaving 2,094 unfinished files, and excludes the 23,209 previously retained candidate IDs. Pilot completions are reused only when their checkpoint hash verifies the same revision, query set and matcher, and they searched a whole file without subreddit or context-ID restrictions. Partially scanned files restart from the beginning and deduplicate candidates.
+
+Run `start-remaining-scan.ps1` to start or resume the continuation. It creates a hidden background process. Progress is in `data_remaining/state/live_progress.json`; run and export status are in `data_remaining/state/full_run_status.json`. Creating `data_remaining/state/stop_requested` requests a graceful stop; remove only that marker before intentionally resuming. Keep the drive connected and the computer awake for the process to run.
+
+The new review snapshot is `outputs/01a0d7fb-20a1-75c2-83ec-202ecae1a0ed/review_remaining.xlsx`. It is regenerated after the scan, or after a graceful stop. Large results may require numbered workbook parts; `workbook_manifest.json` lists every part and table range. CSV/JSON retain the complete collection. The Summary distinguishes imported coverage from newly completed files and new records. New matches remain unreviewed candidates.
+
+`tools/prepare_remaining_scan.py` creates the isolated run once and refuses to reset an existing continuation. `tools/remaining_runner.py` is its runner source. Transient failed files are retried in up to two additional passes; unresolved failures are reported explicitly. A hardware failure or export failure is never presented as complete archive coverage.

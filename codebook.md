@@ -1,6 +1,6 @@
 # Re-identification research codebook
 
-Version 1.0. This is an operational research rubric, not a validated taxonomy copied from a paper. The user's latest instruction makes comment reconstruction optional and prioritizes scanning the whole available dataset. Post-only classification must report that coverage.
+Version 1.1. This is an operational research rubric, not a validated taxonomy copied from a paper. The user's latest instruction requires review of full posts and all available comments, with evidence-based sorting. Earlier post-only results remain explicitly incomplete until comment collection and review can be established. The user confirmed DOI 10.1145/2470654.2481368 as the intended paper.
 
 ## Source crosswalk
 

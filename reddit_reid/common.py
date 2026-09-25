@@ -24,14 +24,15 @@ def digest(value):
     return hashlib.sha256((value if isinstance(value, bytes) else dumps(value).encode("utf-8"))).hexdigest()
 
 
-def save_json(path, value):
+def save_json(path, value, durable=True):
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_suffix(path.suffix + ".partial")
     with tmp.open("w", encoding="utf-8") as f:
         json.dump(value, f, ensure_ascii=False, indent=2, default=str)
         f.flush()
-        os.fsync(f.fileno())
+        if durable:
+            os.fsync(f.fileno())
     for attempt in range(8):
         try:
             os.replace(tmp, path)

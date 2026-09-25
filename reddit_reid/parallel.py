@@ -189,7 +189,7 @@ def scan_parallel(cfg):
     messages = context.Queue(maxsize=32)
     cancel = context.Event()
     executor = concurrent.futures.ProcessPoolExecutor(max_workers=cfg['resources'].get('workers',4),mp_context=context,
-        initializer=_initialize,initargs=(queries,messages,cfg,cancel))
+        initializer=_initialize,initargs=(queries,messages,cfg,cancel),max_tasks_per_child=8)
     active = {}
     done_received = set()
     next_job = 0

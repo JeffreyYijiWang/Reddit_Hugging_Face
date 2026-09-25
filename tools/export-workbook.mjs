@@ -21,7 +21,8 @@ for (const [name, table] of Object.entries(data)) {
   const end = letter(headers.length), last = Math.max(1, rows.length + 1);
   sheet.getRange(`A1:${end}1`).values = [headers];
   for (let start = 0; start < rows.length; start += 1000) {
-    const chunk = rows.slice(start, start+1000).map(row => row.map((value,col) => name === 'Summary' && row[0] === 'Exported at UTC' && col === 1 ? new Date(value) : safe(value)));
+    const chunk = rows.slice(start, start+1000).map(row => row.map((value,col) =>
+      value != null && ((name === 'Summary' && row[0] === 'Exported at UTC' && col === 1) || headers[col] === 'OG post date') ? new Date(typeof value === 'number' ? value*1000 : value) : safe(value)));
     sheet.getRange(`A${start+2}:${end}${start+chunk.length+1}`).values = chunk;
   }
   const used = sheet.getRange(`A1:${end}${last}`);
@@ -33,7 +34,7 @@ for (const [name, table] of Object.entries(data)) {
   header.format.fill = '#243B53';
   header.format.font = {name: 'Arial', size: 10, color: '#FFFFFF', bold: true};
   header.format.wrapText = true;
-  header.format.rowHeight = name === 'Review' ? 108 : 48;
+  header.format.rowHeight = ['Review','Incidents'].includes(name) ? 108 : 60;
   sheet.freezePanes.freezeRows(1);
   if (headers.length > 5) sheet.freezePanes.freezeColumns(1);
   if (name === 'Summary') {
@@ -41,32 +42,46 @@ for (const [name, table] of Object.entries(data)) {
     sheet.getRange(`B1:B${last}`).format.columnWidth = 100;
     sheet.getRange(`A2:B${last}`).format.wrapText = true;
     sheet.getRange(`A2:B${last}`).format.rowHeight = 42;
-    sheet.getRange('B2').setNumberFormat('yyyy-mm-dd hh:mm:ss');
+    rows.forEach((row,i) => {
+      if (row[0] === 'Exported at UTC') sheet.getRange(`B${i+2}`).setNumberFormat('yyyy-mm-dd hh:mm:ss');
+      else if (typeof row[1] === 'number') sheet.getRange(`B${i+2}`).setNumberFormat('#,##0');
+    });
   }
   if (name === 'Codebook') {
     sheet.getRange(`A1:A${last}`).format.columnWidth = 25;
     sheet.getRange(`B1:B${last}`).format.columnWidth = 65;
     sheet.getRange(`C1:C${last}`).format.columnWidth = 75;
+    sheet.getRange(`D1:D${last}`).format.columnWidth = 90;
+    sheet.getRange(`A2:D${last}`).format.wrapText = true;
+    sheet.getRange(`A2:D${last}`).format.rowHeight = 54;
   }
   if (name === 'Field availability') {
     sheet.getRange(`A1:A${last}`).format.columnWidth = 75;
     sheet.getRange(`B1:B${last}`).format.columnWidth = 65;
     sheet.getRange(`C1:C${last}`).format.columnWidth = 50;
     sheet.getRange(`D1:D${last}`).format.columnWidth = 90;
+    sheet.getRange(`A2:D${last}`).format.wrapText = true;
+    sheet.getRange(`A2:D${last}`).format.rowHeight = 60;
   }
   if (name === 'Run coverage') sheet.getRange(`B1:B${last}`).format.columnWidth = 65;
   if (name === 'Keyword hits') sheet.getRange(`A1:A${last}`).format.columnWidth = 75;
   if (name === 'Series links') sheet.getRange(`D1:D${last}`).format.columnWidth = 45;
-  if (name === 'Incidents') {
-    sheet.getRange(`A1:A${last}`).format.columnWidth = 30;
-    sheet.getRange(`B1:C${last}`).format.columnWidth = 42;
-  }
+  if (['Review','Incidents','Posts'].includes(name)) sheet.getRange(`A2:${end}${Math.max(2,last)}`).format.rowHeight = 54;
   for (let col = 0; col < headers.length; col++) {
     const h = headers[col], range = sheet.getRange(`${letter(col+1)}2:${letter(col+1)}${Math.max(2,last)}`);
     if (/(?:text|title|body|quote|rationale|notes|context)/i.test(h)) {
       range.format.columnWidth = 54;
       // Full text is retained. Compact row heights allow filtering; readers expand rows as needed.
       range.format.wrapText = false;
+    }
+    if (/^(id|Post ID)$/.test(h)) range.format.columnWidth = 18;
+    if (/permalink|Confirmed URL/.test(h)) range.format.columnWidth = 58;
+    if (/title/i.test(h)) { range.format.columnWidth = 70; range.format.wrapText = true; }
+    if (/^(Review status|Confirmed re-identification|Decision rationale|Post intent definition)$/.test(h)) { range.format.columnWidth = 55; range.format.wrapText = true; }
+    if (h === 'OG post date') { range.setNumberFormat('mm/dd/yyyy hh:mm'); range.format.columnWidth = 26; }
+    if (name === 'Evidence' && h === 'quote') {
+      range.format.columnWidth = 90; range.format.wrapText = true;
+      rows.forEach((row,i) => sheet.getRange(`A${i+2}:${end}${i+2}`).format.rowHeight = Math.min(240,Math.max(42,Math.ceil(String(row[col] ?? '').length/95)*15)));
     }
     if (h === 'Reviewer label') range.dataValidation = {rule: {type:'list',values:['Yes','No','Unsure']}};
     if (/^Reviewer/.test(h)) range.format.fill = '#FFF4CE';
@@ -87,6 +102,9 @@ await fs.writeFile(path.join(path.dirname(outputPath),'workbook_errors.ndjson'),
 const xlsx = await SpreadsheetFile.exportXlsx(workbook);
 await xlsx.save(outputPath + '.tmp.xlsx');
 await fs.rename(outputPath + '.tmp.xlsx', outputPath);
+// The library emits a large reconstructible debug dump beside each temporary
+// export. Retain the compact checks below instead of duplicating the corpus.
+await fs.unlink(outputPath + '.tmp.xlsx.inspect.ndjson').catch(error => { if (error.code !== 'ENOENT') throw error; });
 // Initial and final snapshots render every sheet's populated header/sample range.
 if (process.env.REID_RENDER !== '0') {
   for (const {name, rows, columns} of summaries) {

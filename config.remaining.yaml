@@ -1,11 +1,13 @@
 dataset_repo: Dk587/arctic
 dataset_revision: cd44b72689d409b6a881e0b4581d106b9c37a613
 keyword_workbook: Keyword Search Combos_ FIRST PERSON (by threat model).xlsx
-data_root: data
+data_root: data_remaining
 discovery:
   start_month: null
   end_month: null
-  kinds: [submissions, comments]
+  kinds:
+  - submissions
+  - comments
   subreddits: []
   selected_paths: []
 context:
@@ -21,7 +23,7 @@ resources:
   workers: 2
   worker_memory_limit: 384MB
   batch_size: 4096
-  max_query_seconds: 25200
+  max_query_seconds: null
   pilot_scan_seconds: 1200
   network_bytes: 220000000000
   cache_bytes: 2000000000
@@ -40,8 +42,11 @@ model:
   prompt_version: case-v1
   schema_version: '1.0'
 workflow:
-  collect_comments: true
+  collect_comments: false
   automatic_full_run_restart_attempts: 2
+  retry_failed_passes: 2
 export:
   max_rows_per_workbook: 2000
   node_executable: C:/Users/Jeffr/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/bin/node.exe
+  workbook_stem: review_remaining
+  output_directory: D:\Reddit_Hugging_Face\outputs\01a0d7fb-20a1-75c2-83ec-202ecae1a0ed

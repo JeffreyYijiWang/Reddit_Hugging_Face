@@ -14,12 +14,15 @@ from .common import digest, dumps, now
 class Store:
     def __init__(self, cfg, remote=True):
         self.root = Path(cfg["data_root"])
-        self.db = duckdb.connect(str(self.root / "state/research.duckdb"))
+        # Limits must apply during WAL recovery, before the first SQL statement.
+        self.db = duckdb.connect(str(self.root / "state/research.duckdb"), config={
+            'memory_limit':cfg['resources']['memory_limit'], 'threads':cfg['resources']['threads']})
         self.db.execute("SET memory_limit = ?", [cfg["resources"]["memory_limit"]])
         self.db.execute("SET threads = ?", [cfg["resources"]["threads"]])
         self.db.execute("SET temp_directory = ?", [str(self.root / "tmp")])
         self.db.execute("SET max_temp_directory_size = ?", [str(cfg["resources"]["spill_bytes"]) + "B"])
         self.db.execute("SET preserve_insertion_order = true")
+        self.db.execute("SET enable_progress_bar = false")
         extension_dir = self.root / "cache/extensions"
         extension_dir.mkdir(exist_ok=True, parents=True)
         self.db.execute("SET extension_directory = ?", [str(extension_dir)])

@@ -113,6 +113,10 @@ class Relay:
                             owner.ledger.reserve(length)
                             reservation = length
                         self.send_response(r.status_code)
+                        # Do not accumulate an idle server thread for each
+                        # successive short-lived DuckDB reader connection.
+                        self.send_header('Connection', 'close')
+                        self.close_connection = True
                         for key in ("Content-Length", "Content-Range", "Accept-Ranges", "Content-Type", "ETag", "Last-Modified"):
                             if key in r.headers:
                                 self.send_header(key, r.headers[key])

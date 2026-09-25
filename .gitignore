@@ -10,3 +10,7 @@ tree_first.json
 paper.pdf
 paper.txt
 .env
+models/
+runtime/
+data_remaining/
+remaining_scan/
