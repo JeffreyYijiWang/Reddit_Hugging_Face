@@ -1,0 +1,12 @@
+.venv*/
+node_modules/
+data/
+outputs/
+__pycache__/
+.pytest_cache/
+*.pyc
+repo_info.json
+tree_first.json
+paper.pdf
+paper.txt
+.env
