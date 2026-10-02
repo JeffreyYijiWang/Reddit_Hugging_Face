@@ -1,0 +1,38 @@
+# Shared contracts — schema version 1.0
+
+Records are JSON objects; exchange datasets are UTF-8 JSONL unless a manifest is explicitly JSON. All records carry `schema_version: "1.0"` and research/synthetic distinction `synthetic: false|true`. Unknown values use JSON null, never invented values. UTC observation timestamps are ISO 8601 ending Z; Reddit `created_utc` is integer Unix seconds or null. Hashes use SHA-256. A deterministic ID hashes canonical JSON (sorted keys, compact separators, UTF-8); prefixes distinguish namespaces.
+
+## Identity and storage
+Canonical submission `post_id` is lowercase `t3_<base36>`; comments retain `record_id: t1_<base36>` and containing `post_id: t3_<base36>|null`. Reject invalid identifiers; do not reinterpret a t1 as a t3. Submission `record_id` equals `post_id`. Legacy `typed_id`, `thread_id`, `kind` are adapted explicitly. Distinct submissions, matched records, matches, category assignments and incidents are separate counts. An incident ID is not inferred to be a post ID.
+
+Append-only source snapshots, machine annotations and human review events are separate. Deduplicated/current views are derived and reproducible. Every artifact manifest records run_id, code/method version, input paths/hashes, output paths/counts, source scope and limitations. Stable joins use IDs, never row order. Current view chooses an explicit run for machine annotations and the latest valid unsuperseded human event for each decision dimension; conflicting human branches remain pending.
+
+## Submission/candidate
+Required fields: schema_version, synthetic, record_id, post_id, record_type (`submission` or `comment`), subreddit (lowercase, no r/ prefix or null), author (string|null), title (string|null), selftext (string|null), body (string|null), created_utc, over_18 (bool|null; content only), permalink (string|null), source (object).
+Source: repository, revision, shard, source_record_id, retrieved_at, content_hash (all explicit null if unavailable), plus provenance_basis. Preserve original source JSON/snapshot references. Comments never masquerade as submissions. Candidate membership records: membership_id, run_id, record_id, post_id, stage, reason, source_refs, observed_at. Do not fabricate unavailable containing submissions.
+
+## Keyword catalog and match
+Catalog JSON: schema_version, workbook_path, workbook_sha256, catalog_hash, matcher_version, phrases (array). Each phrase: keyword_id, normalized_phrase, original_phrases (array), mappings (array). Each mapping: mapping_id, category, subcategory, target_term, template, source_sheet, source_row, source_phrase (nullable metadata explicit). Combined sheets are source provenance, not extra threat categories. Preserve all category mappings for shared phrases.
+Matcher contract: `Matcher(catalog).find(text)` returns entries containing keyword_id, start, end (zero-based half-open offsets into original text); optional extra metadata allowed. Expose matcher_version. Do not span title/body boundaries. Legacy matcher adapters allowed.
+Match record: match_id, run_id, record_id, post_id, keyword_id, field (`title|selftext|body`), start, end, mapping_ids (array), catalog_hash, matcher_version, source_refs. Same occurrence with many mappings remains one match with multiple assignments.
+
+## Coverage and scan plan
+Shard record: shard_id, repository, revision, path, kind (`submissions|comments|unknown`), month (YYYY-MM|null), size_bytes, content_identity (hash/etag|null), inventory_observed_at, original_processing_status, current_status, evidence_refs. Statuses explicitly distinguish complete, partial, failed, missing, changed, duplicated, source_unavailable and unverifiable. Inventory existence is not processing success.
+Scan plan JSON: schema_version, run_id, source_repository, source_revision, catalog_hash (null until bound), matcher_version, mode (`incremental|full|local_reuse`), shards (array of shard records with action/reason), limitations (array). Do not skip existing data without compatible source/catalog/matcher evidence.
+Checkpoint key binds repository+revision+path+content_identity+catalog_hash+matcher_version+mode. Record last durable position, status, rows scanned, run_id and errors. Resume cannot interpret partial as complete or reuse across changed scope. Full scans separately selectable and resource bounded.
+
+## Subreddit metadata and screening
+Metadata: subreddit, description|null, teen_focused (true|false|null), tags (array), source_url|null, retrieved_at, fetch_status, evidence_basis. Teen tag alone cannot remove any record.
+Screening result: screening_id, run_id, record_id, post_id, decision (`retained|excluded|pending`), reasons (array), rule_version, evidence_refs, observed_at, synthetic. Automated ambiguous signals route pending; exclusion is reversible. Age exclusion is never a machine screening decision. Export retained/excluded/pending as views, preserve ledger.
+
+## Classification
+Result: classification_id, run_id, record_id, post_id, label (`Yes|No|Uncertain` or null on execution failure), execution_status (`completed|failed|not_run`), error|null, score|null, score_kind (`uncalibrated|calibrated_probability|none`), rationale|null, evidence_refs, provider, model, prompt_version, input_hash, context_complete (bool|null), observed_at, synthetic. Score scale documented by provider; missing context remains Uncertain unless available evidence justifies a claim. Mock results are synthetic only, never research labels.
+Benchmark rows require label provenance/reviewer identity, stable record_id/post_id, human label, group_id (author/incident grouping when known) and split. Assistant references are not human labels. Fit calibration/thresholds on training/validation only; evaluate held-out groups. Report unavailable metrics as null with reason when actual labels/class balance are insufficient.
+
+## Human review, context and final membership
+Event: event_id, record_id, post_id, reviewer_id, reviewed_at, decision_type (`reidentification|content|age|incident|adjudication`), decision, reason, evidence_refs, supersedes_event_id|null, source (`human`), synthetic. Require explicit human age decision plus evidence/reason; no inference from subreddit or over_18. Append-only event import is idempotent by event_id; conflicting duplicate IDs fail. Decisions must survive annotation reruns. Corrections add events, never rewrite history.
+Context: context_id, seed_record_id, related_record_id, relationship (`thread|explicit_link|update|same_account`), source_url|null, retrieved_at, status, completeness, limits, evidence_refs; bounded retrieval cannot infer undisclosed identities or link unrelated accounts.
+Final views: included/excluded/pending records with reason and event refs. Human-reviewed Yes counts require actual human events, not model labels. Model Yes alone stays pending final review. Incident totals use reviewed incident links only; absent adjudication yields null/unavailable, not invented incident counts. Audit samples record population hash, seed, method (`probability|targeted`), inclusion probability where applicable and selection reason. Never use targeted samples for population accuracy estimates.
+
+## Integration API
+Agents publish exact module APIs and CLI arguments in HANDOFF. Coordinator will use these to wire top-level commands. Minimal expected stages: coverage audit/plan, keywords build/filter/match, ingestion import/scan/export, screening run, classification prepare/run/evaluate/rank, review export/import/current/audit. Dependencies should prefer standard library and already-installed packages. Propose contract changes before implementing incompatible shapes.

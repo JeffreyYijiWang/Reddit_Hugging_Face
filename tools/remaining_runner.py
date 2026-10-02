@@ -2,15 +2,57 @@
 from __future__ import annotations
 
 import argparse
+from concurrent.futures.process import BrokenProcessPool
 import os
 import sys
 import time
 import traceback
 from pathlib import Path
 
+import duckdb
+
 from .common import dumps, load_config, load_json, now, save_json
 from .fullrun import finalize
+from .memory_guard import allocation_headroom
 from .parallel import scan_parallel
+
+
+def wait_for_memory(cfg, status, status_path):
+    minimum = cfg['resources'].get('minimum_query_memory_bytes', 0)
+    while minimum:
+        available = allocation_headroom()
+        if available >= minimum or (Path(cfg['data_root'])/'state/stop_requested').exists():
+            break
+        status.update(state='waiting_for_memory', available_allocation_bytes=available,
+                      minimum_allocation_bytes=minimum, memory_checked_at=now())
+        save_json(status_path, status)
+        time.sleep(10)
+    status['state'] = 'running'
+    save_json(status_path, status)
+
+
+def scan_with_recovery(cfg, smoke_files, status, status_path):
+    """Bound worker/allocator retries; preserve checkpoints and the same ledger."""
+    maximum = cfg['workflow'].get('automatic_full_run_restart_attempts', 2)
+    while True:
+        wait_for_memory(cfg, status, status_path)
+        try:
+            return scan_parallel(cfg, max_files=smoke_files)
+        except (BrokenProcessPool, duckdb.OutOfMemoryException) as exc:
+            used = status.get('automatic_restarts', 0)
+            status.setdefault('recoverable_failures', []).append({
+                'at': now(), 'error': type(exc).__name__ + ': ' + str(exc),
+                'restart_available': used < maximum})
+            if used >= maximum:
+                save_json(status_path, status)
+                raise
+            status.update(state='recovering_scan', automatic_restarts=used+1)
+            save_json(status_path, status)
+            print(dumps({'recovering_scan': type(exc).__name__, 'restart': used+1,
+                         'maximum_restarts': maximum, 'checkpoint_resume': True}), flush=True)
+            time.sleep(10)
+            status['state'] = 'running'
+            save_json(status_path, status)
 
 
 def run(cfg, smoke_files=None):
@@ -38,7 +80,7 @@ def run(cfg, smoke_files=None):
         for attempt in range(attempts):
             status.update(state='running', attempt=attempt+1)
             save_json(status_path, status)
-            result = scan_parallel(cfg, max_files=smoke_files)
+            result = scan_with_recovery(cfg, smoke_files, status, status_path)
             status.update(discovery_complete=result['complete'], stop_reason=result['stop_reason'],
                           state='exporting', scan_finished_at=now())
             save_json(status_path, status)
@@ -68,6 +110,6 @@ if __name__ == '__main__':
     parser.add_argument('--smoke-files', type=int)
     args = parser.parse_args()
     cfg = load_config(args.config)
-    if cfg['resources']['max_query_seconds'] is not None or cfg['resources']['workers'] < 2:
-        raise ValueError('Continuation requires an unlimited time budget and the parallel scanner.')
+    if cfg['resources']['max_query_seconds'] is not None or cfg['resources']['workers'] < 1:
+        raise ValueError('Continuation requires an unlimited time budget and at least one reader.')
     run(cfg, args.smoke_files)

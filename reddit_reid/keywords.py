@@ -31,18 +31,43 @@ def normalize(text):
     return SPELL_RE.sub(lambda m: SPELLINGS[m.group()], text) if "recogni" in text or "reali" in text else text
 
 
+def _normalization_spans(text):
+    """Split only where NFKC cannot compose or reorder across the boundary."""
+    start = 0
+    for index in range(1, len(text)):
+        char = text[index]
+        if not char.isascii():
+            # Marks outside U+0300..036F and decomposed leading marks also
+            # belong to the preceding starter's normalization segment.
+            decomposed = unicodedata.normalize('NFKD', char)
+            if unicodedata.combining(decomposed[0]):
+                continue
+            segment = text[start:index]
+            # Hangul Jamo and some Indic vowel signs compose even though
+            # their canonical combining class is zero.
+            if unicodedata.normalize('NFKC', segment + char) != (
+                    unicodedata.normalize('NFKC', segment) +
+                    unicodedata.normalize('NFKC', char)):
+                continue
+        yield start, index
+        start = index
+    if text:
+        yield start, len(text)
+
+
 def normalized_offsets(text):
-    # Normalize base characters together with combining marks to preserve NFKC.
+    # Normalization and query matching are unchanged; map composed source
+    # sequences together instead of limiting marks to one Unicode block.
     chars, spans = [], []
-    for m in re.finditer(r"[^\u0300-\u036f][\u0300-\u036f]*|[\u0300-\u036f]+", text):
-        for char in unicodedata.normalize("NFKC", m.group()).casefold().translate(APOSTROPHES):
+    for start, end in _normalization_spans(text):
+        for char in unicodedata.normalize("NFKC", text[start:end]).casefold().translate(APOSTROPHES):
             if char.isspace():
                 if chars and chars[-1] == " ":
-                    spans[-1] = (spans[-1][0], m.end())
+                    spans[-1] = (spans[-1][0], end)
                     continue
                 char = " "
             chars.append(char)
-            spans.append((m.start(), m.end()))
+            spans.append((start, end))
     if chars and chars[-1] == " ":
         chars.pop(); spans.pop()
     if chars and chars[0] == " ":

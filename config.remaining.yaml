@@ -18,11 +18,11 @@ context:
   max_depth: 3
   max_posts: 100
 resources:
-  memory_limit: 512MB
+  memory_limit: 256MB
   threads: 1
-  workers: 2
-  worker_memory_limit: 384MB
-  batch_size: 4096
+  workers: 1
+  worker_memory_limit: 256MB
+  batch_size: 2048
   max_query_seconds: null
   pilot_scan_seconds: 1200
   network_bytes: 220000000000
@@ -30,6 +30,7 @@ resources:
   spill_bytes: 1000000000
   disk_bytes: 5000000000
   minimum_free_bytes: 1000000000
+  minimum_query_memory_bytes: 1610612736
   request_timeout_seconds: 60
 model:
   endpoint: null
